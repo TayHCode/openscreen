@@ -27,7 +27,7 @@ Open proposals and fixes under review:
 | Area | Work |
 | --- | --- |
 | Recording | [Camera-only recording](https://github.com/getopenscreen/openscreen/pull/1398), [floating camera preview](https://github.com/getopenscreen/openscreen/pull/1288), [macOS echo cancellation](https://github.com/getopenscreen/openscreen/pull/1265) |
-| Capture compatibility | [Direct X11 capture](https://github.com/getopenscreen/openscreen/pull/1328), [Windows capture fallback](https://github.com/getopenscreen/openscreen/pull/1254), [macOS cursor alignment](https://github.com/getopenscreen/openscreen/pull/1306) |
+| Capture compatibility | [Direct X11 capture](https://github.com/getopenscreen/openscreen/pull/1328), [Windows capture fallback](https://github.com/getopenscreen/openscreen/pull/1254) |
 | Editing | [Precise crop controls](https://github.com/getopenscreen/openscreen/pull/1389), [green-screen chroma key](https://github.com/getopenscreen/openscreen/pull/1321) |
 | Storage | [Manage and delete recordings](https://github.com/getopenscreen/openscreen/pull/1382), [delete recordings with their project](https://github.com/getopenscreen/openscreen/pull/1381) |
 | Agents | [Per-turn token usage](https://github.com/getopenscreen/openscreen/pull/1177), [MCP waiting for a user-controlled recording](https://github.com/getopenscreen/openscreen/pull/1369) |
@@ -35,9 +35,8 @@ Open proposals and fixes under review:
 
 Recording and preview issues remain a priority:
 
-- **Windows:** [hangs when stopping](https://github.com/getopenscreen/openscreen/issues/252), [capture access denied](https://github.com/getopenscreen/openscreen/issues/1247), [recording bar input](https://github.com/getopenscreen/openscreen/issues/1203).
-- **macOS:** [cursor offsets](https://github.com/getopenscreen/openscreen/issues/1130), [permission warnings](https://github.com/getopenscreen/openscreen/issues/1196), [corrupted MOV preview](https://github.com/getopenscreen/openscreen/issues/1390).
+- **Windows:** [capture access denied](https://github.com/getopenscreen/openscreen/issues/1247), [recording bar input](https://github.com/getopenscreen/openscreen/issues/1203).
+- **macOS:** [permission warnings](https://github.com/getopenscreen/openscreen/issues/1196), [corrupted MOV preview](https://github.com/getopenscreen/openscreen/issues/1390).
 - **Linux:** [AMD capture crashes](https://github.com/getopenscreen/openscreen/issues/1340), [niri/NVIDIA capture](https://github.com/getopenscreen/openscreen/issues/1244), [missing recording controls on KDE](https://github.com/getopenscreen/openscreen/issues/1101).
-- **Playback:** [occasional backward frame steps](https://github.com/getopenscreen/openscreen/issues/1301).
 
 Follow the [open issues](https://github.com/getopenscreen/openscreen/issues) or suggest a direction on [Discord](https://getopenscreen.com/discord).

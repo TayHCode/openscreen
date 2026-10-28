@@ -217,16 +217,19 @@ public final class AudioTrackMixer {
 	/// the ticker allows moves each source's last delivery forward by the gap, which measures
 	/// the grace against the time the queue was actually running.
 	///
-	/// Every pass still counts `queueStallFrames` as running time, so a queue that is merely
+	/// Every pass still counts one ticker period as running time, so a queue that is merely
 	/// sluggish — passes always a little over the threshold apart — cannot keep a dead source
-	/// inside the grace forever: it stalls after a few passes and the track keeps moving.
+	/// inside the grace forever: it stalls after at most `emissionGraceFrames / chunkFrames`
+	/// passes and the track keeps moving. One period and not the whole threshold, because
+	/// whatever is not credited is grace taken from a live source on every block.
 	private func discountQueueStall(until now: CMTime) {
 		guard let anchor, now.isValid, now.isNumeric else {
 			return
 		}
 		let nowFrame = frameIndex(of: now, from: anchor)
 		if let lastPassFrame, nowFrame - lastPassFrame > Int64(MixFormat.queueStallFrames) {
-			let stall = nowFrame - lastPassFrame - Int64(MixFormat.queueStallFrames)
+			// The ticker period is the chunk size: 10 ms.
+			let stall = nowFrame - lastPassFrame - Int64(MixFormat.chunkFrames)
 			for index in sources.indices {
 				sources[index].lastDeliveryFrame += stall
 			}

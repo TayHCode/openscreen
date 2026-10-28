@@ -419,7 +419,9 @@ final class AudioTrackMixerTests: XCTestCase {
 			makeSourceBuffer(burst(seconds: 0.15, left: 0, right: 0.5), at: clock.now, nonInterleaved: false),
 			from: .microphone
 		)
-		for _ in 0..<20 {
+		// 40 passes, 6 s: each credits 10 ms of running time, so the 250 ms grace runs out by
+		// the 26th and the microphone is written off with seconds of take still to go.
+		for _ in 0..<40 {
 			mixer.ingest(
 				makeSourceBuffer(burst(seconds: 0.15, left: 0.5, right: 0), at: clock.now, nonInterleaved: true),
 				from: .system
@@ -429,7 +431,37 @@ final class AudioTrackMixerTests: XCTestCase {
 		}
 
 		// Before `finish`: the track has to have kept moving without the microphone.
-		XCTAssertGreaterThan(seconds(ofFrames: mixedFrames(sink)), 2.0)
+		XCTAssertGreaterThan(seconds(ofFrames: mixedFrames(sink)), 5.0)
+	}
+
+	/// A block must not eat into the grace of a source that is late but alive: here 200 ms
+	/// behind, within the 250 ms grace, when the queue blocks for a second.
+	func testABlockedQueueKeepsTheGraceOfALateSource() {
+		let sink = RecordingSink()
+		let clock = TestClock(.zero)
+		let mixer = makeMixer(sink: sink, clock: clock, includesMicrophone: false)
+		mixer.beginTimeline(at: clock.now)
+
+		mixer.ingest(
+			makeSourceBuffer(burst(seconds: 0.2, left: 0.5, right: 0.5), at: .zero, nonInterleaved: true),
+			from: .system
+		)
+		runTicker(mixer, clock, seconds: 0.2)
+		clock.advance(seconds: 1)
+		mixer.tick()
+		mixer.ingest(
+			makeSourceBuffer(
+				burst(seconds: 1, left: 0.5, right: 0.5),
+				at: CMTime(seconds: 0.2, preferredTimescale: 48_000),
+				nonInterleaved: true
+			),
+			from: .system
+		)
+		runTicker(mixer, clock, seconds: 0.1)
+		mixer.finish(atSourceTime: clock.now)
+
+		XCTAssertEqual(mixer.deliveryReport(for: .system).droppedSeconds, 0, accuracy: 0.0001)
+		XCTAssertGreaterThan(peak(mixedFrames(sink), from: 0.2, to: 1.2), audibleThreshold)
 	}
 
 	private func assertBlockedQueueKeepsQueuedAudio(tickFirst: Bool) {

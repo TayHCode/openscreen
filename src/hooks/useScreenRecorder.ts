@@ -360,6 +360,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const discardRecordingId = useRef<number | null>(null);
 	const restarting = useRef(false);
 	const countdownRunId = useRef(0);
+	/**
+	 * Held from the press until the countdown shows. Neither `countdownActive` nor
+	 * `recording` is set before then, and on Linux the portal's picker is up for that
+	 * whole wait: a second press raised a second picker, whose prepare threw away the
+	 * grant the user had just given the first (#1340).
+	 */
+	const countdownStarting = useRef<object | null>(null);
 	const cursorAccessibilityWarningShown = useRef(false);
 	const [countdownActive, setCountdownActive] = useState(false);
 	const webcamReady = useRef(false);
@@ -1633,10 +1640,21 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	};
 
 	const startRecordCountdown = async () => {
-		if (countdownActive || recording) {
+		if (countdownActive || recording || countdownStarting.current) {
 			return;
 		}
+		const starting = {};
+		countdownStarting.current = starting;
+		try {
+			await runRecordCountdown();
+		} finally {
+			if (countdownStarting.current === starting) {
+				countdownStarting.current = null;
+			}
+		}
+	};
 
+	const runRecordCountdown = async () => {
 		const runId = countdownRunId.current + 1;
 		countdownRunId.current = runId;
 
@@ -1731,6 +1749,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			return;
 		}
 
+		// From here `countdownActive` takes over, and a press cancels the countdown.
+		countdownStarting.current = null;
 		setCountdownActive(true);
 
 		let overlayHiddenBeforeStart = false;

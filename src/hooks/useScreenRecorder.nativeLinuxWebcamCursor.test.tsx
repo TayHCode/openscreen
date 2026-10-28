@@ -125,3 +125,37 @@ describe("useScreenRecorder native Linux webcam attachment", () => {
 		);
 	});
 });
+
+describe("useScreenRecorder native Linux prepare", () => {
+	// #1340: a second press while the portal picker was up raised a second picker,
+	// and the two prepares discarded each other's grant.
+	it("ignores a press while the portal picker is up", async () => {
+		let answerPicker: (value: { success: boolean; recordingId: number }) => void = () => undefined;
+		api.prepareNativeLinuxRecording = vi.fn(
+			() =>
+				new Promise((resolve) => {
+					answerPicker = resolve;
+				}),
+		);
+		api.cancelNativeLinuxPrepare = vi.fn(async () => ({ success: true }));
+		const view = renderHook(() => useScreenRecorder());
+		await settle();
+
+		await act(async () => {
+			view.result.current.toggleRecording();
+		});
+		await settle();
+		await act(async () => {
+			view.result.current.toggleRecording();
+		});
+		await settle();
+		expect(api.prepareNativeLinuxRecording).toHaveBeenCalledTimes(1);
+
+		await act(async () => {
+			answerPicker({ success: true, recordingId: 7 });
+		});
+		await settle(3_500);
+		expect(api.startNativeLinuxRecording).toHaveBeenCalledTimes(1);
+		expect(view.result.current.recording).toBe(true);
+	});
+});

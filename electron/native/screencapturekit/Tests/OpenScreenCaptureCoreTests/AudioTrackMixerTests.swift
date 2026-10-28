@@ -237,8 +237,7 @@ final class AudioTrackMixerTests: XCTestCase {
 			makeSourceBuffer(burst(seconds: 0.2, left: 0, right: 0.5), at: clock.now, nonInterleaved: false),
 			from: .microphone
 		)
-		clock.advance(seconds: 0.2)
-		mixer.tick()
+		runTicker(mixer, clock, seconds: 0.2)
 
 		for _ in 0..<10 {
 			// Each buffer covers the 200 ms about to elapse, the way a live source delivers.
@@ -246,8 +245,7 @@ final class AudioTrackMixerTests: XCTestCase {
 				makeSourceBuffer(burst(seconds: 0.2, left: 0.5, right: 0), at: clock.now, nonInterleaved: true),
 				from: .system
 			)
-			clock.advance(seconds: 0.2)
-			mixer.tick()
+			runTicker(mixer, clock, seconds: 0.2)
 		}
 		clock.advance(seconds: 0.2)
 		mixer.finish(atSourceTime: clock.now)
@@ -370,9 +368,9 @@ final class AudioTrackMixerTests: XCTestCase {
 			makeSourceBuffer(burst(seconds: 0.5, left: 0.5, right: 0.5), at: .zero, nonInterleaved: true),
 			from: .system
 		)
-		// Long enough past the grace that the source is written off and the cursor runs on.
-		clock.advance(seconds: 2)
-		mixer.tick()
+		// Long enough past the grace that the source is written off and the cursor runs on —
+		// with the queue running, so this is a quiet source and not a blocked queue.
+		runTicker(mixer, clock, seconds: 2)
 
 		// …and only now does it hand over the span it went quiet for, which is already behind
 		// the cursor and cannot be placed.
@@ -391,6 +389,67 @@ final class AudioTrackMixerTests: XCTestCase {
 		XCTAssertEqual(report.droppedSeconds, 0.5, accuracy: 0.011)
 		// Nothing here predates the session, so the other half of the split stays clear.
 		XCTAssertEqual(report.trimmedSeconds, 0, accuracy: 0.011)
+	}
+
+	/// A blocked sample queue is not a silent source (#1117).
+	///
+	/// Both sources keep delivering while the queue is held for a second — by the writer, or by
+	/// anything else on it — so their buffers for that second wait behind the block. When the
+	/// queue frees up, the ticker gets there first, which is the worst order: measured on the
+	/// clock alone, both sources would look a second quiet, the cursor would run to now in
+	/// silence, and the queued second would then arrive behind it and be dropped.
+	func testABlockedQueueDoesNotTurnQueuedAudioIntoSilence() {
+		let sink = RecordingSink()
+		let clock = TestClock(.zero)
+		let mixer = makeMixer(sink: sink, clock: clock, includesMicrophone: true, microphoneGain: 1)
+		mixer.beginTimeline(at: clock.now)
+
+		var delivered = CMTime.zero
+		func deliverBoth(seconds: Double) {
+			mixer.ingest(
+				makeSourceBuffer(burst(seconds: seconds, left: 0.5, right: 0), at: delivered, nonInterleaved: true),
+				from: .system
+			)
+			mixer.ingest(
+				makeSourceBuffer(burst(seconds: seconds, left: 0, right: 0.5), at: delivered, nonInterleaved: false),
+				from: .microphone
+			)
+			delivered = CMTimeAdd(delivered, CMTime(seconds: seconds, preferredTimescale: 48_000))
+		}
+
+		for _ in 0..<50 {
+			deliverBoth(seconds: 0.01)
+			runTicker(mixer, clock, seconds: 0.01)
+		}
+
+		// The queue is blocked for a second: no tick, no buffer, while the clock runs on.
+		clock.advance(seconds: 1)
+		mixer.tick()
+		for _ in 0..<100 {
+			deliverBoth(seconds: 0.01)
+		}
+
+		for _ in 0..<50 {
+			deliverBoth(seconds: 0.01)
+			runTicker(mixer, clock, seconds: 0.01)
+		}
+		mixer.finish(atSourceTime: clock.now)
+
+		let frames = mixedFrames(sink)
+		assertContiguous(sink)
+		XCTAssertEqual(seconds(ofFrames: frames), 2.0, accuracy: 0.011)
+		XCTAssertEqual(mixer.deliveryReport(for: .system).droppedSeconds, 0, accuracy: 0.0001)
+		XCTAssertEqual(mixer.deliveryReport(for: .microphone).droppedSeconds, 0, accuracy: 0.0001)
+		for step in 0..<20 {
+			let from = Double(step) * 0.1
+			for channel in 0..<channelCount {
+				XCTAssertGreaterThan(
+					peak(frames, from: from, to: from + 0.1, channel: channel),
+					audibleThreshold,
+					"silence on channel \(channel) at \(from)s means queued audio was dropped"
+				)
+			}
+		}
 	}
 
 	// MARK: - Pause
@@ -760,6 +819,14 @@ final class AudioTrackMixerTests: XCTestCase {
 				presentationTime,
 				CMTime(value: CMTimeValue(CMSampleBufferGetNumSamples(buffer)), timescale: CMTimeScale(sampleRate))
 			)
+		}
+	}
+
+	/// Moves the clock the way the recorder's 10 ms ticker sees it, with the queue running.
+	private func runTicker(_ mixer: AudioTrackMixer, _ clock: TestClock, seconds: Double) {
+		for _ in 0..<Int((seconds * 100).rounded()) {
+			clock.advance(seconds: 0.01)
+			mixer.tick()
 		}
 	}
 

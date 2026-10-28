@@ -216,15 +216,19 @@ public final class AudioTrackMixer {
 	/// whole time; it is the mixer that was not listening. So a pass that comes much later than
 	/// the ticker allows moves each source's last delivery forward by the gap, which measures
 	/// the grace against the time the queue was actually running.
+	///
+	/// Every pass still counts `queueStallFrames` as running time, so a queue that is merely
+	/// sluggish — passes always a little over the threshold apart — cannot keep a dead source
+	/// inside the grace forever: it stalls after a few passes and the track keeps moving.
 	private func discountQueueStall(until now: CMTime) {
 		guard let anchor, now.isValid, now.isNumeric else {
 			return
 		}
 		let nowFrame = frameIndex(of: now, from: anchor)
 		if let lastPassFrame, nowFrame - lastPassFrame > Int64(MixFormat.queueStallFrames) {
-			let gap = nowFrame - lastPassFrame
+			let stall = nowFrame - lastPassFrame - Int64(MixFormat.queueStallFrames)
 			for index in sources.indices {
-				sources[index].lastDeliveryFrame += gap
+				sources[index].lastDeliveryFrame += stall
 			}
 		}
 		lastPassFrame = nowFrame

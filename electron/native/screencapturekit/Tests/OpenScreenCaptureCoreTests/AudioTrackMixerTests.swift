@@ -399,6 +399,40 @@ final class AudioTrackMixerTests: XCTestCase {
 	/// clock alone, both sources would look a second quiet, the cursor would run to now in
 	/// silence, and the queued second would then arrive behind it and be dropped.
 	func testABlockedQueueDoesNotTurnQueuedAudioIntoSilence() {
+		assertBlockedQueueKeepsQueuedAudio(tickFirst: true)
+	}
+
+	/// The same stall with a queued buffer first in line instead of the ticker.
+	func testABlockedQueueDoesNotTurnQueuedAudioIntoSilenceWhenABufferIsFirst() {
+		assertBlockedQueueKeepsQueuedAudio(tickFirst: false)
+	}
+
+	/// A sluggish queue must not keep a dead source alive: passes 150 ms apart, just over the
+	/// stall threshold, still let a microphone that stopped be written off mid-take.
+	func testASluggishQueueStillWritesOffADeadSource() {
+		let sink = RecordingSink()
+		let clock = TestClock(.zero)
+		let mixer = makeMixer(sink: sink, clock: clock, includesMicrophone: true, microphoneGain: 1)
+		mixer.beginTimeline(at: clock.now)
+
+		mixer.ingest(
+			makeSourceBuffer(burst(seconds: 0.15, left: 0, right: 0.5), at: clock.now, nonInterleaved: false),
+			from: .microphone
+		)
+		for _ in 0..<20 {
+			mixer.ingest(
+				makeSourceBuffer(burst(seconds: 0.15, left: 0.5, right: 0), at: clock.now, nonInterleaved: true),
+				from: .system
+			)
+			clock.advance(seconds: 0.15)
+			mixer.tick()
+		}
+
+		// Before `finish`: the track has to have kept moving without the microphone.
+		XCTAssertGreaterThan(seconds(ofFrames: mixedFrames(sink)), 2.0)
+	}
+
+	private func assertBlockedQueueKeepsQueuedAudio(tickFirst: Bool) {
 		let sink = RecordingSink()
 		let clock = TestClock(.zero)
 		let mixer = makeMixer(sink: sink, clock: clock, includesMicrophone: true, microphoneGain: 1)
@@ -424,7 +458,9 @@ final class AudioTrackMixerTests: XCTestCase {
 
 		// The queue is blocked for a second: no tick, no buffer, while the clock runs on.
 		clock.advance(seconds: 1)
-		mixer.tick()
+		if tickFirst {
+			mixer.tick()
+		}
 		for _ in 0..<100 {
 			deliverBoth(seconds: 0.01)
 		}

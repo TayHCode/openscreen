@@ -99,7 +99,13 @@ extern "C" {
     fn CVPixelBufferGetHeightOfPlane(p: *mut std::ffi::c_void, plane_index: usize) -> usize;
     fn CVPixelBufferGetWidth(p: *mut std::ffi::c_void) -> usize;
     fn CVPixelBufferGetHeight(p: *mut std::ffi::c_void) -> usize;
+    fn CVPixelBufferGetPixelFormatType(p: *mut std::ffi::c_void) -> u32;
 }
+
+/// `kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange` ('x420') et sa variante pleine
+/// excursion ('xf20') : le P010 que VideoToolbox sort pour un flux 10 bits (HEVC Main 10).
+const CV_420_10_BIPLANAR_VIDEO: u32 = u32::from_be_bytes(*b"x420");
+const CV_420_10_BIPLANAR_FULL: u32 = u32::from_be_bytes(*b"xf20");
 
 /// `retain` ObjC sur un `id`. `CVMetalTextureGetTexture` rend une référence
 /// *empruntée* au `CVMetalTextureRef` qui la porte : relâcher ce dernier sans
@@ -1156,6 +1162,11 @@ impl Compositor {
     /// Crée les `MTLTexture` Y (`R8Unorm`) et UV (`RG8Unorm`) de la frame. Zéro copie :
     /// les textures Metal partagent l'IOSurface du `CVPixelBuffer`. API symétrique de
     /// `compositor_windows::nv12_srvs`.
+    ///
+    /// Un flux 10 bits arrive en P010 : 16 bits par échantillon, valeur dans les bits de
+    /// poids fort. En `R16Unorm`/`RG16Unorm` le shader lit la même valeur normalisée qu'en
+    /// NV12 ; en `R8Unorm` chaque échantillon devenait deux texels, d'où l'image en bandes
+    /// d'une vidéo iPhone (#1390).
     pub unsafe fn nv12_srvs(
         &self,
         frame: *const AVFrame,
@@ -1167,8 +1178,14 @@ impl Compositor {
             )
         })?;
         let cache = &self.metal_texture_cache;
-        let y = cache.make_texture_from_pixel_buffer(pb, 0, metal::MTLPixelFormat::R8Unorm)?;
-        let uv = cache.make_texture_from_pixel_buffer(pb, 1, metal::MTLPixelFormat::RG8Unorm)?;
+        let (y_fmt, uv_fmt) = match CVPixelBufferGetPixelFormatType(pb) {
+            CV_420_10_BIPLANAR_VIDEO | CV_420_10_BIPLANAR_FULL => {
+                (metal::MTLPixelFormat::R16Unorm, metal::MTLPixelFormat::RG16Unorm)
+            }
+            _ => (metal::MTLPixelFormat::R8Unorm, metal::MTLPixelFormat::RG8Unorm),
+        };
+        let y = cache.make_texture_from_pixel_buffer(pb, 0, y_fmt)?;
+        let uv = cache.make_texture_from_pixel_buffer(pb, 1, uv_fmt)?;
         Ok((y, uv))
     }
 

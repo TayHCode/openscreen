@@ -152,10 +152,13 @@ describe("useScreenRecorder native Linux prepare", () => {
 		expect(api.prepareNativeLinuxRecording).toHaveBeenCalledTimes(1);
 
 		await act(async () => {
-			answerPicker({ success: true, recordingId: 7 });
+			answerPicker({ success: true, recordingId: 42 });
 		});
 		await settle(3_500);
 		expect(api.startNativeLinuxRecording).toHaveBeenCalledTimes(1);
+		expect(api.startNativeLinuxRecording).toHaveBeenCalledWith(
+			expect.objectContaining({ recordingId: 42 }),
+		);
 		expect(view.result.current.recording).toBe(true);
 	});
 });
